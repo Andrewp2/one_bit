@@ -1,0 +1,10 @@
+epoch=1 train_loss=0.2988 train_acc=0.9134 test_loss=0.1602 test_acc=0.9521
+epoch=2 train_loss=0.1309 train_acc=0.9619 test_loss=0.1086 test_acc=0.9679
+epoch=3 train_loss=0.0899 train_acc=0.9730 test_loss=0.0895 test_acc=0.9714
+epoch=4 train_loss=0.0678 train_acc=0.9792 test_loss=0.0886 test_acc=0.9718
+epoch=5 train_loss=0.0537 train_acc=0.9835 test_loss=0.0859 test_acc=0.9739
+time_to_90pct=4.57s
+
+real	0m23.679s
+user	0m46.717s
+sys	0m4.587s

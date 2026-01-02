@@ -1,0 +1,18 @@
+ uv run python main.py --optimizer eggroll --epochs 15 --population 4096 --population-batch 1024 --batch-size 256 --sigma 0.1 --es-lr 0.02
+epoch=1 train_loss=1.0170 train_acc=0.8147 test_loss=1.4752 test_acc=0.8715
+epoch=2 train_loss=1.6319 train_acc=0.8911 test_loss=1.8539 test_acc=0.9011
+epoch=3 train_loss=1.8719 train_acc=0.9067 test_loss=1.8844 test_acc=0.9109
+epoch=4 train_loss=1.9539 train_acc=0.9144 test_loss=1.9649 test_acc=0.9178
+epoch=5 train_loss=1.9906 train_acc=0.9202 test_loss=1.9620 test_acc=0.9237
+epoch=6 train_loss=2.0160 train_acc=0.9236 test_loss=2.0599 test_acc=0.9233
+epoch=7 train_loss=2.0124 train_acc=0.9262 test_loss=1.9866 test_acc=0.9258
+epoch=8 train_loss=1.9245 train_acc=0.9301 test_loss=1.9710 test_acc=0.9290
+epoch=9 train_loss=1.9901 train_acc=0.9316 test_loss=1.9799 test_acc=0.9313
+epoch=10 train_loss=1.9592 train_acc=0.9343 test_loss=2.0695 test_acc=0.9337
+epoch=11 train_loss=1.9736 train_acc=0.9364 test_loss=2.0371 test_acc=0.9338
+epoch=12 train_loss=1.9574 train_acc=0.9383 test_loss=2.0681 test_acc=0.9344
+epoch=13 train_loss=1.9482 train_acc=0.9396 test_loss=2.1266 test_acc=0.9356
+epoch=14 train_loss=1.9302 train_acc=0.9411 test_loss=2.0507 test_acc=0.9353
+epoch=15 train_loss=1.8671 train_acc=0.9419 test_loss=2.0332 test_acc=0.9362
+time_to_90pct=28.72s
+

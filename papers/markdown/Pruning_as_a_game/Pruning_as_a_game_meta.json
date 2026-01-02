@@ -1,0 +1,1522 @@
+{
+  "table_of_contents": [
+    {
+      "title": "Pruning as a Game: Equilibrium-Driven\nSparsification of Neural Networks",
+      "heading_level": null,
+      "page_id": 0,
+      "polygon": [
+        [
+          155.98828125,
+          76.5703125
+        ],
+        [
+          455.56060791015625,
+          76.5703125
+        ],
+        [
+          455.56060791015625,
+          116.98223876953125
+        ],
+        [
+          155.98828125,
+          116.98223876953125
+        ]
+      ]
+    },
+    {
+      "title": "Abstract",
+      "heading_level": null,
+      "page_id": 0,
+      "polygon": [
+        [
+          282.392578125,
+          288.49420166015625
+        ],
+        [
+          328.2432861328125,
+          288.49420166015625
+        ],
+        [
+          328.2432861328125,
+          300.44940185546875
+        ],
+        [
+          282.392578125,
+          300.44940185546875
+        ]
+      ]
+    },
+    {
+      "title": "1 Introduction",
+      "heading_level": null,
+      "page_id": 0,
+      "polygon": [
+        [
+          108.0,
+          512.40234375
+        ],
+        [
+          190.8136749267578,
+          512.40234375
+        ],
+        [
+          190.8136749267578,
+          525.0743408203125
+        ],
+        [
+          108.0,
+          525.0743408203125
+        ]
+      ]
+    },
+    {
+      "title": "2 Related Work",
+      "heading_level": null,
+      "page_id": 1,
+      "polygon": [
+        [
+          106.98046875,
+          331.41796875
+        ],
+        [
+          197.09014892578125,
+          331.41796875
+        ],
+        [
+          197.09014892578125,
+          343.83935546875
+        ],
+        [
+          106.98046875,
+          343.83935546875
+        ]
+      ]
+    },
+    {
+      "title": "2.1 Magnitude and Regularization-Based Pruning",
+      "heading_level": null,
+      "page_id": 1,
+      "polygon": [
+        [
+          106.98046875,
+          410.30859375
+        ],
+        [
+          327.19708251953125,
+          410.30859375
+        ],
+        [
+          327.19708251953125,
+          421.547119140625
+        ],
+        [
+          106.98046875,
+          421.547119140625
+        ]
+      ]
+    },
+    {
+      "title": "2.2 Structured and Channel Pruning",
+      "heading_level": null,
+      "page_id": 1,
+      "polygon": [
+        [
+          107.578125,
+          498.28253173828125
+        ],
+        [
+          271.11761474609375,
+          498.28253173828125
+        ],
+        [
+          271.11761474609375,
+          508.53515625
+        ],
+        [
+          107.578125,
+          508.53515625
+        ]
+      ]
+    },
+    {
+      "title": "2.3 Pruning During Training and Dynamic Sparse Optimization",
+      "heading_level": null,
+      "page_id": 1,
+      "polygon": [
+        [
+          107.578125,
+          573.0265350341797
+        ],
+        [
+          387.28125,
+          573.0265350341797
+        ],
+        [
+          387.28125,
+          582.9891357421875
+        ],
+        [
+          107.578125,
+          582.9891357421875
+        ]
+      ]
+    },
+    {
+      "title": "2.4 Pruning Large Language Models",
+      "heading_level": null,
+      "page_id": 1,
+      "polygon": [
+        [
+          107.578125,
+          659.7245178222656
+        ],
+        [
+          271.1874084472656,
+          659.7245178222656
+        ],
+        [
+          271.1874084472656,
+          669.6871109008789
+        ],
+        [
+          107.578125,
+          669.6871109008789
+        ]
+      ]
+    },
+    {
+      "title": "2.5 Game-Theoretic Perspectives in Learning",
+      "heading_level": null,
+      "page_id": 2,
+      "polygon": [
+        [
+          107.578125,
+          74.25
+        ],
+        [
+          307.0527038574219,
+          74.25
+        ],
+        [
+          307.0527038574219,
+          84.279052734375
+        ],
+        [
+          107.578125,
+          84.279052734375
+        ]
+      ]
+    },
+    {
+      "title": "2.6 Positioning of This Work",
+      "heading_level": null,
+      "page_id": 2,
+      "polygon": [
+        [
+          107.279296875,
+          132.64453125
+        ],
+        [
+          236.58726501464844,
+          132.64453125
+        ],
+        [
+          236.58726501464844,
+          143.66705322265625
+        ],
+        [
+          107.279296875,
+          143.66705322265625
+        ]
+      ]
+    },
+    {
+      "title": "3 Problem Setup and Preliminaries",
+      "heading_level": null,
+      "page_id": 2,
+      "polygon": [
+        [
+          108.0,
+          217.3359375
+        ],
+        [
+          295.864013671875,
+          217.3359375
+        ],
+        [
+          295.864013671875,
+          230.31732177734375
+        ],
+        [
+          108.0,
+          230.31732177734375
+        ]
+      ]
+    },
+    {
+      "title": "3.1 Participation Variables",
+      "heading_level": null,
+      "page_id": 2,
+      "polygon": [
+        [
+          106.98046875,
+          370.86328125
+        ],
+        [
+          228.7467041015625,
+          370.86328125
+        ],
+        [
+          228.7467041015625,
+          381.6581115722656
+        ],
+        [
+          106.98046875,
+          381.6581115722656
+        ]
+      ]
+    },
+    {
+      "title": "3.2 Training Objective with Participation",
+      "heading_level": null,
+      "page_id": 2,
+      "polygon": [
+        [
+          107.578125,
+          580.46484375
+        ],
+        [
+          290.1661376953125,
+          580.46484375
+        ],
+        [
+          290.1661376953125,
+          592.1971130371094
+        ],
+        [
+          107.578125,
+          592.1971130371094
+        ]
+      ]
+    },
+    {
+      "title": "3.3 From Optimization to Interaction",
+      "heading_level": null,
+      "page_id": 3,
+      "polygon": [
+        [
+          108.0,
+          74.31646728515625
+        ],
+        [
+          273.847412109375,
+          74.31646728515625
+        ],
+        [
+          273.847412109375,
+          84.279052734375
+        ],
+        [
+          108.0,
+          84.279052734375
+        ]
+      ]
+    },
+    {
+      "title": "4 Pruning as a Strategic Game",
+      "heading_level": null,
+      "page_id": 3,
+      "polygon": [
+        [
+          107.578125,
+          218.650146484375
+        ],
+        [
+          272.706787109375,
+          218.650146484375
+        ],
+        [
+          272.706787109375,
+          230.6053466796875
+        ],
+        [
+          107.578125,
+          230.6053466796875
+        ]
+      ]
+    },
+    {
+      "title": "4.1 Players and Strategies",
+      "heading_level": null,
+      "page_id": 3,
+      "polygon": [
+        [
+          106.681640625,
+          281.53125
+        ],
+        [
+          224.95095825195312,
+          281.53125
+        ],
+        [
+          224.95095825195312,
+          292.3800964355469
+        ],
+        [
+          106.681640625,
+          292.3800964355469
+        ]
+      ]
+    },
+    {
+      "title": "4.2 Utility Functions",
+      "heading_level": null,
+      "page_id": 3,
+      "polygon": [
+        [
+          105.78515625,
+          447.43359375
+        ],
+        [
+          202.09677124023438,
+          447.43359375
+        ],
+        [
+          202.09677124023438,
+          459.0520935058594
+        ],
+        [
+          105.78515625,
+          459.0520935058594
+        ]
+      ]
+    },
+    {
+      "title": "Benefit Term",
+      "heading_level": null,
+      "page_id": 3,
+      "polygon": [
+        [
+          120.427734375,
+          527.87109375
+        ],
+        [
+          178.19659423828125,
+          527.87109375
+        ],
+        [
+          178.19659423828125,
+          539.7180938720703
+        ],
+        [
+          120.427734375,
+          539.7180938720703
+        ]
+      ]
+    },
+    {
+      "title": "Cost Term",
+      "heading_level": null,
+      "page_id": 3,
+      "polygon": [
+        [
+          122.220703125,
+          667.08984375
+        ],
+        [
+          167.6760711669922,
+          667.08984375
+        ],
+        [
+          167.6760711669922,
+          677.0970916748047
+        ],
+        [
+          122.220703125,
+          677.0970916748047
+        ]
+      ]
+    },
+    {
+      "title": "4.3 Nash Equilibrium",
+      "heading_level": null,
+      "page_id": 4,
+      "polygon": [
+        [
+          106.98046875,
+          140.765625
+        ],
+        [
+          207.0979766845703,
+          140.765625
+        ],
+        [
+          207.0979766845703,
+          151.80706787109375
+        ],
+        [
+          106.98046875,
+          151.80706787109375
+        ]
+      ]
+    },
+    {
+      "title": "4.4 Dominated Strategies and Sparsity",
+      "heading_level": null,
+      "page_id": 4,
+      "polygon": [
+        [
+          107.578125,
+          253.271484375
+        ],
+        [
+          278.4700012207031,
+          253.271484375
+        ],
+        [
+          278.4700012207031,
+          263.23406982421875
+        ],
+        [
+          107.578125,
+          263.23406982421875
+        ]
+      ]
+    },
+    {
+      "title": "5 Theoretical Analysis",
+      "heading_level": null,
+      "page_id": 4,
+      "polygon": [
+        [
+          107.578125,
+          401.9241943359375
+        ],
+        [
+          230.32562255859375,
+          401.9241943359375
+        ],
+        [
+          230.32562255859375,
+          413.87939453125
+        ],
+        [
+          107.578125,
+          413.87939453125
+        ]
+      ]
+    },
+    {
+      "title": "5.1 Best Response Dynamics",
+      "heading_level": null,
+      "page_id": 4,
+      "polygon": [
+        [
+          107.578125,
+          453.4795227050781
+        ],
+        [
+          235.57107543945312,
+          453.4795227050781
+        ],
+        [
+          235.57107543945312,
+          463.4421081542969
+        ],
+        [
+          107.578125,
+          463.4421081542969
+        ]
+      ]
+    },
+    {
+      "title": "5.2 Conditions for Sparse Equilibria",
+      "heading_level": null,
+      "page_id": 4,
+      "polygon": [
+        [
+          106.98046875,
+          653.6875
+        ],
+        [
+          269.3941345214844,
+          653.6875
+        ],
+        [
+          269.3941345214844,
+          663.6501007080078
+        ],
+        [
+          106.98046875,
+          663.6501007080078
+        ]
+      ]
+    },
+    {
+      "title": "5.3 Stability of Equilibria",
+      "heading_level": null,
+      "page_id": 5,
+      "polygon": [
+        [
+          106.98046875,
+          154.30078125
+        ],
+        [
+          223.42666625976562,
+          154.30078125
+        ],
+        [
+          223.42666625976562,
+          165.1771240234375
+        ],
+        [
+          106.98046875,
+          165.1771240234375
+        ]
+      ]
+    },
+    {
+      "title": "5.4 Interpretation of Pruning Heuristics",
+      "heading_level": null,
+      "page_id": 5,
+      "polygon": [
+        [
+          108.0,
+          264.10052490234375
+        ],
+        [
+          284.8262023925781,
+          264.10052490234375
+        ],
+        [
+          284.8262023925781,
+          274.0631103515625
+        ],
+        [
+          108.0,
+          274.0631103515625
+        ]
+      ]
+    },
+    {
+      "title": "6 Equilibrium-Driven Pruning Algorithm",
+      "heading_level": null,
+      "page_id": 5,
+      "polygon": [
+        [
+          108.0,
+          433.4931640625
+        ],
+        [
+          328.9560241699219,
+          433.4931640625
+        ],
+        [
+          328.9560241699219,
+          445.4483642578125
+        ],
+        [
+          108.0,
+          445.4483642578125
+        ]
+      ]
+    },
+    {
+      "title": "6.1 Joint Optimization of Parameters and Participation",
+      "heading_level": null,
+      "page_id": 5,
+      "polygon": [
+        [
+          108.0,
+          487.1285400390625
+        ],
+        [
+          350.0613098144531,
+          487.1285400390625
+        ],
+        [
+          350.0613098144531,
+          497.09112548828125
+        ],
+        [
+          108.0,
+          497.09112548828125
+        ]
+      ]
+    },
+    {
+      "title": "6.2 Gradient of Utility",
+      "heading_level": null,
+      "page_id": 5,
+      "polygon": [
+        [
+          106.3828125,
+          662.8745269775391
+        ],
+        [
+          209.5587158203125,
+          662.8745269775391
+        ],
+        [
+          209.5587158203125,
+          672.8371200561523
+        ],
+        [
+          106.3828125,
+          672.8371200561523
+        ]
+      ]
+    },
+    {
+      "title": "Algorithm 1 Equilibrium-Driven Pruning",
+      "heading_level": null,
+      "page_id": 6,
+      "polygon": [
+        [
+          106.3828125,
+          73.86328125
+        ],
+        [
+          274.6639709472656,
+          73.86328125
+        ],
+        [
+          274.6639709472656,
+          84.06109619140625
+        ],
+        [
+          106.3828125,
+          84.06109619140625
+        ]
+      ]
+    },
+    {
+      "title": "6.3 Discussion",
+      "heading_level": null,
+      "page_id": 6,
+      "polygon": [
+        [
+          106.98046875,
+          368.6184997558594
+        ],
+        [
+          175.25750732421875,
+          368.6184997558594
+        ],
+        [
+          175.25750732421875,
+          378.5810852050781
+        ],
+        [
+          106.98046875,
+          378.5810852050781
+        ]
+      ]
+    },
+    {
+      "title": "7 Experimental Settings",
+      "heading_level": null,
+      "page_id": 6,
+      "polygon": [
+        [
+          106.3828125,
+          476.8261413574219
+        ],
+        [
+          239.17245483398438,
+          476.8261413574219
+        ],
+        [
+          239.17245483398438,
+          488.7813415527344
+        ],
+        [
+          106.3828125,
+          488.7813415527344
+        ]
+      ]
+    },
+    {
+      "title": "7.1 Dataset and Model Architecture",
+      "heading_level": null,
+      "page_id": 6,
+      "polygon": [
+        [
+          106.98046875,
+          496.58551025390625
+        ],
+        [
+          267.0130920410156,
+          496.58551025390625
+        ],
+        [
+          267.0130920410156,
+          506.548095703125
+        ],
+        [
+          106.98046875,
+          506.548095703125
+        ]
+      ]
+    },
+    {
+      "title": "7.2 Training and Pruning Procedure",
+      "heading_level": null,
+      "page_id": 7,
+      "polygon": [
+        [
+          106.98046875,
+          106.699462890625
+        ],
+        [
+          269.6431884765625,
+          106.699462890625
+        ],
+        [
+          269.6431884765625,
+          116.66204833984375
+        ],
+        [
+          106.98046875,
+          116.66204833984375
+        ]
+      ]
+    },
+    {
+      "title": "7.3 Hyperparameter Configurations",
+      "heading_level": null,
+      "page_id": 7,
+      "polygon": [
+        [
+          106.98046875,
+          202.640625
+        ],
+        [
+          268.3978576660156,
+          202.640625
+        ],
+        [
+          268.3978576660156,
+          212.76806640625
+        ],
+        [
+          106.98046875,
+          212.76806640625
+        ]
+      ]
+    },
+    {
+      "title": "8 Results",
+      "heading_level": null,
+      "page_id": 7,
+      "polygon": [
+        [
+          106.98046875,
+          415.7061462402344
+        ],
+        [
+          163.12542724609375,
+          415.7061462402344
+        ],
+        [
+          163.12542724609375,
+          427.6613464355469
+        ],
+        [
+          106.98046875,
+          427.6613464355469
+        ]
+      ]
+    },
+    {
+      "title": "8.1 Training Dynamics and Emergent Sparsity",
+      "heading_level": null,
+      "page_id": 7,
+      "polygon": [
+        [
+          108.0,
+          468.59051513671875
+        ],
+        [
+          312.79119873046875,
+          468.59051513671875
+        ],
+        [
+          312.79119873046875,
+          478.5531005859375
+        ],
+        [
+          108.0,
+          478.5531005859375
+        ]
+      ]
+    },
+    {
+      "title": "8.2 Equilibrium Participation Distributions",
+      "heading_level": null,
+      "page_id": 7,
+      "polygon": [
+        [
+          107.578125,
+          636.15234375
+        ],
+        [
+          299.51104736328125,
+          636.15234375
+        ],
+        [
+          299.51104736328125,
+          646.6381072998047
+        ],
+        [
+          107.578125,
+          646.6381072998047
+        ]
+      ]
+    },
+    {
+      "title": "8.3 Accuracy\u2013Sparsity Trade-off",
+      "heading_level": null,
+      "page_id": 8,
+      "polygon": [
+        [
+          107.279296875,
+          555.2095031738281
+        ],
+        [
+          253.9122314453125,
+          555.2095031738281
+        ],
+        [
+          253.9122314453125,
+          565.1721038818359
+        ],
+        [
+          107.279296875,
+          565.1721038818359
+        ]
+      ]
+    },
+    {
+      "title": "9 Discussion",
+      "heading_level": null,
+      "page_id": 9,
+      "polygon": [
+        [
+          106.98046875,
+          493.83984375
+        ],
+        [
+          179.7431640625,
+          493.83984375
+        ],
+        [
+          179.7431640625,
+          506.4833984375
+        ],
+        [
+          106.98046875,
+          506.4833984375
+        ]
+      ]
+    },
+    {
+      "title": "9.1 Comparison with Magnitude-Based Pruning",
+      "heading_level": null,
+      "page_id": 9,
+      "polygon": [
+        [
+          108.0,
+          515.2775573730469
+        ],
+        [
+          319.74609375,
+          515.2775573730469
+        ],
+        [
+          319.74609375,
+          525.2401428222656
+        ],
+        [
+          108.0,
+          525.2401428222656
+        ]
+      ]
+    },
+    {
+      "title": "9.2 Role of L1 vs L2 Costs",
+      "heading_level": null,
+      "page_id": 9,
+      "polygon": [
+        [
+          106.98046875,
+          599.02734375
+        ],
+        [
+          225.887451171875,
+          599.02734375
+        ],
+        [
+          225.887451171875,
+          609.8111114501953
+        ],
+        [
+          106.98046875,
+          609.8111114501953
+        ]
+      ]
+    },
+    {
+      "title": "9.3 Numerical Stability Considerations",
+      "heading_level": null,
+      "page_id": 9,
+      "polygon": [
+        [
+          107.578125,
+          672.4645004272461
+        ],
+        [
+          280.4127502441406,
+          672.4645004272461
+        ],
+        [
+          280.4127502441406,
+          682.4271011352539
+        ],
+        [
+          107.578125,
+          682.4271011352539
+        ]
+      ]
+    },
+    {
+      "title": "10 Conclusion",
+      "heading_level": null,
+      "page_id": 10,
+      "polygon": [
+        [
+          108.0,
+          107.53912353515625
+        ],
+        [
+          189.0443115234375,
+          107.53912353515625
+        ],
+        [
+          189.0443115234375,
+          119.49432373046875
+        ],
+        [
+          108.0,
+          119.49432373046875
+        ]
+      ]
+    },
+    {
+      "title": "References",
+      "heading_level": null,
+      "page_id": 10,
+      "polygon": [
+        [
+          106.3828125,
+          351.52734375
+        ],
+        [
+          163.54385375976562,
+          351.52734375
+        ],
+        [
+          163.54385375976562,
+          364.0933837890625
+        ],
+        [
+          106.3828125,
+          364.0933837890625
+        ]
+      ]
+    }
+  ],
+  "page_stats": [
+    {
+      "page_id": 0,
+      "text_extraction_method": "pdftext",
+      "block_counts": [
+        [
+          "Span",
+          103
+        ],
+        [
+          "Line",
+          48
+        ],
+        [
+          "Text",
+          6
+        ],
+        [
+          "SectionHeader",
+          3
+        ],
+        [
+          "PageHeader",
+          1
+        ]
+      ],
+      "block_metadata": {
+        "llm_request_count": 0,
+        "llm_error_count": 0,
+        "llm_tokens_used": 0,
+        "previous_text": "",
+        "previous_type": "",
+        "previous_order": 0
+      }
+    },
+    {
+      "page_id": 1,
+      "text_extraction_method": "pdftext",
+      "block_counts": [
+        [
+          "Span",
+          145
+        ],
+        [
+          "Line",
+          44
+        ],
+        [
+          "Text",
+          8
+        ],
+        [
+          "SectionHeader",
+          5
+        ],
+        [
+          "ListItem",
+          4
+        ],
+        [
+          "ListGroup",
+          1
+        ]
+      ],
+      "block_metadata": {
+        "llm_request_count": 0,
+        "llm_error_count": 0,
+        "llm_tokens_used": 0,
+        "previous_text": "",
+        "previous_type": "",
+        "previous_order": 0
+      }
+    },
+    {
+      "page_id": 2,
+      "text_extraction_method": "pdftext",
+      "block_counts": [
+        [
+          "Span",
+          277
+        ],
+        [
+          "Line",
+          51
+        ],
+        [
+          "Text",
+          13
+        ],
+        [
+          "SectionHeader",
+          5
+        ],
+        [
+          "Equation",
+          5
+        ]
+      ],
+      "block_metadata": {
+        "llm_request_count": 0,
+        "llm_error_count": 0,
+        "llm_tokens_used": 0,
+        "previous_text": "",
+        "previous_type": "",
+        "previous_order": 0
+      }
+    },
+    {
+      "page_id": 3,
+      "text_extraction_method": "pdftext",
+      "block_counts": [
+        [
+          "Span",
+          352
+        ],
+        [
+          "Line",
+          62
+        ],
+        [
+          "Text",
+          13
+        ],
+        [
+          "SectionHeader",
+          6
+        ],
+        [
+          "Equation",
+          5
+        ]
+      ],
+      "block_metadata": {
+        "llm_request_count": 0,
+        "llm_error_count": 0,
+        "llm_tokens_used": 0,
+        "previous_text": "",
+        "previous_type": "",
+        "previous_order": 0
+      }
+    },
+    {
+      "page_id": 4,
+      "text_extraction_method": "pdftext",
+      "block_counts": [
+        [
+          "Span",
+          436
+        ],
+        [
+          "Line",
+          86
+        ],
+        [
+          "Text",
+          12
+        ],
+        [
+          "SectionHeader",
+          5
+        ],
+        [
+          "Equation",
+          5
+        ]
+      ],
+      "block_metadata": {
+        "llm_request_count": 0,
+        "llm_error_count": 0,
+        "llm_tokens_used": 0,
+        "previous_text": "",
+        "previous_type": "",
+        "previous_order": 0
+      }
+    },
+    {
+      "page_id": 5,
+      "text_extraction_method": "pdftext",
+      "block_counts": [
+        [
+          "Span",
+          271
+        ],
+        [
+          "Line",
+          50
+        ],
+        [
+          "Text",
+          12
+        ],
+        [
+          "SectionHeader",
+          5
+        ],
+        [
+          "ListItem",
+          3
+        ],
+        [
+          "Equation",
+          3
+        ],
+        [
+          "ListGroup",
+          1
+        ]
+      ],
+      "block_metadata": {
+        "llm_request_count": 0,
+        "llm_error_count": 0,
+        "llm_tokens_used": 0,
+        "previous_text": "",
+        "previous_type": "",
+        "previous_order": 0
+      }
+    },
+    {
+      "page_id": 6,
+      "text_extraction_method": "pdftext",
+      "block_counts": [
+        [
+          "Span",
+          235
+        ],
+        [
+          "Line",
+          47
+        ],
+        [
+          "ListItem",
+          13
+        ],
+        [
+          "Text",
+          11
+        ],
+        [
+          "SectionHeader",
+          4
+        ],
+        [
+          "ListGroup",
+          2
+        ],
+        [
+          "Reference",
+          1
+        ]
+      ],
+      "block_metadata": {
+        "llm_request_count": 0,
+        "llm_error_count": 0,
+        "llm_tokens_used": 0,
+        "previous_text": "",
+        "previous_type": "",
+        "previous_order": 0
+      }
+    },
+    {
+      "page_id": 7,
+      "text_extraction_method": "pdftext",
+      "block_counts": [
+        [
+          "Span",
+          159
+        ],
+        [
+          "Line",
+          47
+        ],
+        [
+          "TableCell",
+          30
+        ],
+        [
+          "Text",
+          12
+        ],
+        [
+          "SectionHeader",
+          5
+        ],
+        [
+          "Table",
+          2
+        ],
+        [
+          "Reference",
+          1
+        ]
+      ],
+      "block_metadata": {
+        "llm_request_count": 0,
+        "llm_error_count": 0,
+        "llm_tokens_used": 0,
+        "previous_text": "",
+        "previous_type": "",
+        "previous_order": 0
+      }
+    },
+    {
+      "page_id": 8,
+      "text_extraction_method": "pdftext",
+      "block_counts": [
+        [
+          "Span",
+          44
+        ],
+        [
+          "Line",
+          22
+        ],
+        [
+          "TableCell",
+          20
+        ],
+        [
+          "Text",
+          4
+        ],
+        [
+          "Caption",
+          2
+        ],
+        [
+          "Reference",
+          2
+        ],
+        [
+          "Figure",
+          1
+        ],
+        [
+          "SectionHeader",
+          1
+        ],
+        [
+          "Table",
+          1
+        ],
+        [
+          "FigureGroup",
+          1
+        ],
+        [
+          "TableGroup",
+          1
+        ]
+      ],
+      "block_metadata": {
+        "llm_request_count": 0,
+        "llm_error_count": 0,
+        "llm_tokens_used": 0,
+        "previous_text": "",
+        "previous_type": "",
+        "previous_order": 0
+      }
+    },
+    {
+      "page_id": 9,
+      "text_extraction_method": "pdftext",
+      "block_counts": [
+        [
+          "Span",
+          60
+        ],
+        [
+          "Line",
+          23
+        ],
+        [
+          "Text",
+          4
+        ],
+        [
+          "SectionHeader",
+          4
+        ],
+        [
+          "Figure",
+          1
+        ],
+        [
+          "Caption",
+          1
+        ],
+        [
+          "FigureGroup",
+          1
+        ],
+        [
+          "Reference",
+          1
+        ]
+      ],
+      "block_metadata": {
+        "llm_request_count": 0,
+        "llm_error_count": 0,
+        "llm_tokens_used": 0,
+        "previous_text": "",
+        "previous_type": "",
+        "previous_order": 0
+      }
+    },
+    {
+      "page_id": 10,
+      "text_extraction_method": "pdftext",
+      "block_counts": [
+        [
+          "Span",
+          141
+        ],
+        [
+          "Line",
+          45
+        ],
+        [
+          "ListItem",
+          11
+        ],
+        [
+          "Reference",
+          11
+        ],
+        [
+          "Text",
+          5
+        ],
+        [
+          "SectionHeader",
+          2
+        ],
+        [
+          "ListGroup",
+          1
+        ]
+      ],
+      "block_metadata": {
+        "llm_request_count": 0,
+        "llm_error_count": 0,
+        "llm_tokens_used": 0,
+        "previous_text": "",
+        "previous_type": "",
+        "previous_order": 0
+      }
+    },
+    {
+      "page_id": 11,
+      "text_extraction_method": "pdftext",
+      "block_counts": [
+        [
+          "Span",
+          89
+        ],
+        [
+          "Line",
+          22
+        ],
+        [
+          "ListItem",
+          10
+        ],
+        [
+          "Reference",
+          9
+        ],
+        [
+          "ListGroup",
+          1
+        ]
+      ],
+      "block_metadata": {
+        "llm_request_count": 0,
+        "llm_error_count": 0,
+        "llm_tokens_used": 0,
+        "previous_text": "",
+        "previous_type": "",
+        "previous_order": 0
+      }
+    }
+  ],
+  "debug_data_path": "debug_data/Pruning_as_a_game"
+}

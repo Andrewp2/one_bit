@@ -78,6 +78,22 @@ def main() -> None:
     parser.add_argument("--group-size-powers", type=str, default="2^5,2^6,2^7")
     parser.add_argument("--sigma-powers", type=str, default="10^1,10^0,10^-1,10^-2")
     parser.add_argument("--es-lr-powers", type=str, default="10^0,10^-1,10^-2")
+    parser.add_argument("--es-steps-per-epoch", type=int, default=100)
+    parser.add_argument("--bias-sigma", type=float, default=0.0)
+    parser.add_argument("--noise-scale-mode", type=str, default="none")
+    parser.add_argument("--fitness-shaping", type=str, default="centered_ranks")
+    parser.add_argument("--fitness-baseline", type=str, default="global")
+    parser.add_argument("--no-sigma-scaling", action="store_true")
+    parser.add_argument("--es-optimizer", type=str, default="none")
+    parser.add_argument("--es-momentum", type=float, default=0.9)
+    parser.add_argument("--es-weight-decay", type=float, default=0.0)
+    parser.add_argument("--sigma-schedule", type=str, default="constant")
+    parser.add_argument("--es-lr-schedule", type=str, default="constant")
+    parser.add_argument("--schedule-warmup-frac", type=float, default=0.0)
+    parser.add_argument("--schedule-decay", type=float, default=2.0)
+    parser.add_argument("--sigma-floor", type=float, default=0.0)
+    parser.add_argument("--es-lr-floor", type=float, default=0.0)
+    parser.add_argument("--es-log-every", type=int, default=0)
     parser.add_argument("--max-runs", type=int, default=0)
     parser.add_argument("--output", type=str, default="eggroll_grid.csv")
     parser.add_argument("--dry-run", action="store_true")
@@ -117,11 +133,43 @@ def main() -> None:
                             str(pop_batch),
                             "--group-size",
                             str(group_size),
+                            "--es-steps-per-epoch",
+                            str(args.es_steps_per_epoch),
                             "--sigma",
                             str(sigma),
+                            "--bias-sigma",
+                            str(args.bias_sigma),
                             "--es-lr",
                             str(es_lr),
+                            "--noise-scale-mode",
+                            args.noise_scale_mode,
+                            "--fitness-shaping",
+                            args.fitness_shaping,
+                            "--fitness-baseline",
+                            args.fitness_baseline,
+                            "--es-optimizer",
+                            args.es_optimizer,
+                            "--es-momentum",
+                            str(args.es_momentum),
+                            "--es-weight-decay",
+                            str(args.es_weight_decay),
+                            "--sigma-schedule",
+                            args.sigma_schedule,
+                            "--es-lr-schedule",
+                            args.es_lr_schedule,
+                            "--schedule-warmup-frac",
+                            str(args.schedule_warmup_frac),
+                            "--schedule-decay",
+                            str(args.schedule_decay),
+                            "--sigma-floor",
+                            str(args.sigma_floor),
+                            "--es-lr-floor",
+                            str(args.es_lr_floor),
+                            "--es-log-every",
+                            str(args.es_log_every),
                         ]
+                        if args.no_sigma_scaling:
+                            cmd.append("--no-sigma-scaling")
                         if args.dry_run:
                             print(" ".join(shlex.quote(c) for c in cmd))
                             continue

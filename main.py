@@ -63,7 +63,6 @@ def build_dataloaders(config: TrainConfig) -> tuple[DataLoader, DataLoader]:
     transform = transforms.Compose(
         [
             transforms.ToTensor(),
-            transforms.Normalize((0.1307,), (0.3081,)),
         ]
     )
     train_ds = datasets.MNIST(config.data_dir, train=True, download=True, transform=transform)
@@ -144,12 +143,17 @@ def _sample_lora_noise_batch(
     return noise
 
 
-def _eggroll_forward_batch(
+def _eggroll_forward_explicit(
     model: TinyMLP,
     inputs: torch.Tensor,
-    noise: dict[str, torch.Tensor],
-    sigma: float,
-    bias_sigma: float,
+    a1: torch.Tensor,
+    b1_lora: torch.Tensor,
+    b1_noise: torch.Tensor,
+    a2: torch.Tensor,
+    b2_lora: torch.Tensor,
+    b2_noise: torch.Tensor,
+    sigma: torch.Tensor,
+    bias_sigma: torch.Tensor,
     noise_scale_mode: str,
 ) -> torch.Tensor:
     x = model.flatten(inputs)
@@ -160,9 +164,6 @@ def _eggroll_forward_batch(
     w1_scale = 1.0
     if noise_scale_mode == "fan_in":
         w1_scale = 1.0 / math.sqrt(w1.size(1))
-    a1 = noise["fc1.weight.A"]
-    b1_noise = noise["fc1.bias"]
-    b1_lora = noise["fc1.weight.B"]
     base1 = x @ w1.t() + b1
     low1 = torch.einsum("pi,pir->pr", x, b1_lora)
     low1 = torch.einsum("pr,por->po", low1, a1)
@@ -174,9 +175,6 @@ def _eggroll_forward_batch(
     w2_scale = 1.0
     if noise_scale_mode == "fan_in":
         w2_scale = 1.0 / math.sqrt(w2.size(1))
-    a2 = noise["fc2.weight.A"]
-    b2_noise = noise["fc2.bias"]
-    b2_lora = noise["fc2.weight.B"]
     base2 = h1 @ w2.t() + b2
     low2 = torch.einsum("pi,pir->pr", h1, b2_lora)
     low2 = torch.einsum("pr,por->po", low2, a2)
@@ -189,6 +187,148 @@ def _centered_ranks(values: torch.Tensor) -> torch.Tensor:
     ranks = torch.argsort(torch.argsort(values))
     ranks = ranks.to(dtype=torch.float32)
     return ranks / (values.numel() - 1) - 0.5
+
+
+def _eggroll_step_full(
+    model: TinyMLP,
+    inputs_unique: torch.Tensor,
+    targets_unique: torch.Tensor,
+    inputs_pop: torch.Tensor,
+    targets_pop: torch.Tensor,
+    pop: int,
+    group_size: int,
+    sigma: float,
+    bias_sigma: float,
+    use_sigma_scaling: bool,
+    noise_scale_mode: str,
+    fitness_shaping: str,
+    fitness_baseline: str,
+    seed: int,
+    forward_fn: callable | None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, float, float, torch.Tensor]:
+    device = inputs_pop.device
+    group_count = pop // group_size
+    half_group = group_size // 2
+    noise_gen = torch.Generator(device=device)
+    noise_gen.manual_seed(seed)
+
+    def sample_noise(out_dim: int, in_dim: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        a_half = torch.randn(group_count, half_group, out_dim, 1, device=device, generator=noise_gen)
+        b_half = torch.randn(group_count, half_group, in_dim, 1, device=device, generator=noise_gen)
+        if bias_sigma > 0:
+            bias_half = torch.randn(group_count, half_group, out_dim, device=device, generator=noise_gen)
+        else:
+            bias_half = torch.zeros(group_count, half_group, out_dim, device=device)
+        a_full = torch.cat([a_half, -a_half], dim=1).reshape(pop, out_dim, 1)
+        b_full = torch.cat([b_half, b_half], dim=1).reshape(pop, in_dim, 1)
+        bias_full = torch.cat([bias_half, -bias_half], dim=1).reshape(pop, out_dim)
+        return a_full, b_full, bias_full
+
+    a1, b1, b1n = sample_noise(model.fc1.weight.size(0), model.fc1.weight.size(1))
+    a2, b2, b2n = sample_noise(model.fc2.weight.size(0), model.fc2.weight.size(1))
+
+    sigma_tensor = torch.tensor(sigma, device=device)
+    bias_sigma_tensor = torch.tensor(bias_sigma, device=device)
+    if forward_fn is None:
+        logits = _eggroll_forward_explicit(
+            model,
+            inputs_pop,
+            a1,
+            b1,
+            b1n,
+            a2,
+            b2,
+            b2n,
+            sigma_tensor,
+            bias_sigma_tensor,
+            noise_scale_mode,
+        )
+    else:
+        logits = forward_fn(
+            inputs_pop,
+            a1,
+            b1,
+            b1n,
+            a2,
+            b2,
+            b2n,
+            sigma_tensor,
+            bias_sigma_tensor,
+        )
+    losses = F.cross_entropy(logits, targets_pop, reduction="none")
+    fitness = -losses
+
+    if fitness_baseline == "per_prompt":
+        fitness_grouped = fitness.view(group_count, group_size)
+        fitness_adjusted = (fitness_grouped - fitness_grouped.mean(dim=1, keepdim=True)).view(pop)
+    else:
+        fitness_adjusted = fitness - fitness.mean()
+
+    if fitness_shaping == "centered_ranks":
+        fitness_shaped = _centered_ranks(fitness_adjusted)
+    elif fitness_shaping == "zscore":
+        std = fitness_adjusted.std(unbiased=False)
+        if std < 1e-8:
+            std = torch.tensor(1.0, device=device)
+        fitness_shaped = fitness_adjusted / (std + 1e-8)
+    else:
+        fitness_shaped = fitness_adjusted
+
+    fitness_batch = fitness_shaped.view(group_count, group_size)
+    f_plus = fitness_batch[:, :half_group]
+    f_minus = fitness_batch[:, half_group:]
+    coeff_base = (f_plus - f_minus) / 2.0
+    coeff = coeff_base.reshape(-1)
+
+    if use_sigma_scaling:
+        weight_coeff = coeff / max(sigma, 1e-8)
+        if bias_sigma > 0:
+            bias_coeff = coeff / max(bias_sigma, 1e-8)
+        else:
+            bias_coeff = torch.zeros_like(coeff)
+    else:
+        weight_coeff = coeff
+        bias_coeff = coeff
+
+    w1_scale = 1.0
+    w2_scale = 1.0
+    if noise_scale_mode == "fan_in":
+        w1_scale = 1.0 / math.sqrt(model.fc1.weight.size(1))
+        w2_scale = 1.0 / math.sqrt(model.fc2.weight.size(1))
+
+    a1p = a1.view(group_count, group_size, -1, 1)[:, :half_group]
+    b1p = b1.view(group_count, group_size, -1, 1)[:, :half_group]
+    a2p = a2.view(group_count, group_size, -1, 1)[:, :half_group]
+    b2p = b2.view(group_count, group_size, -1, 1)[:, :half_group]
+    b1np = b1n.view(group_count, group_size, -1)[:, :half_group]
+    b2np = b2n.view(group_count, group_size, -1)[:, :half_group]
+
+    w1_update = torch.einsum(
+        "p,por,pir->oi",
+        weight_coeff * w1_scale,
+        a1p.reshape(-1, a1p.size(2), 1),
+        b1p.reshape(-1, b1p.size(2), 1),
+    )
+    w2_update = torch.einsum(
+        "p,por,pir->oi",
+        weight_coeff * w2_scale,
+        a2p.reshape(-1, a2p.size(2), 1),
+        b2p.reshape(-1, b2p.size(2), 1),
+    )
+
+    if bias_sigma > 0:
+        b1_update = torch.einsum("p,po->o", bias_coeff, b1np.reshape(-1, b1np.size(2)))
+        b2_update = torch.einsum("p,po->o", bias_coeff, b2np.reshape(-1, b2np.size(2)))
+    else:
+        b1_update = torch.zeros_like(model.fc1.bias)
+        b2_update = torch.zeros_like(model.fc2.bias)
+
+    logits_eval = model(inputs_unique)
+    loss_eval = F.cross_entropy(logits_eval, targets_unique)
+    preds = logits_eval.argmax(dim=1)
+    acc = (preds == targets_unique).float().mean().item()
+
+    return w1_update, b1_update, w2_update, b2_update, loss_eval.item(), acc, fitness
 
 
 def _schedule_value(
@@ -219,6 +359,139 @@ def _schedule_value(
     return max(value, floor)
 
 
+def build_compiled_step(model: TinyMLP, config: TrainConfig) -> callable | None:
+    if config.device == "cpu":
+        return None
+    group_size = config.group_size
+    bias_sigma = config.bias_sigma
+    use_sigma_scaling = config.use_sigma_scaling
+    noise_scale_mode = config.noise_scale_mode
+    fitness_shaping = config.fitness_shaping
+    fitness_baseline = config.fitness_baseline
+
+    def step(
+        w1: torch.Tensor,
+        b1: torch.Tensor,
+        w2: torch.Tensor,
+        b2: torch.Tensor,
+        inputs_unique: torch.Tensor,
+        targets_unique: torch.Tensor,
+        inputs_pop: torch.Tensor,
+        targets_pop: torch.Tensor,
+        sigma: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, float, float, torch.Tensor]:
+        device = inputs_pop.device
+        pop = inputs_pop.size(0)
+        group_count = pop // group_size
+        half_group = group_size // 2
+
+        def sample_noise(out_dim: int, in_dim: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            a_half = torch.randn(group_count, half_group, out_dim, 1, device=device)
+            b_half = torch.randn(group_count, half_group, in_dim, 1, device=device)
+            if bias_sigma > 0:
+                bias_half = torch.randn(group_count, half_group, out_dim, device=device)
+            else:
+                bias_half = torch.zeros(group_count, half_group, out_dim, device=device)
+            a_full = torch.cat([a_half, -a_half], dim=1).reshape(pop, out_dim, 1)
+            b_full = torch.cat([b_half, b_half], dim=1).reshape(pop, in_dim, 1)
+            bias_full = torch.cat([bias_half, -bias_half], dim=1).reshape(pop, out_dim)
+            return a_full, b_full, bias_full
+
+        a1, b1_lora, b1n = sample_noise(w1.size(0), w1.size(1))
+        a2, b2_lora, b2n = sample_noise(w2.size(0), w2.size(1))
+
+        bias_sigma_tensor = torch.tensor(bias_sigma, device=device)
+        logits = _eggroll_forward_explicit(
+            model,
+            inputs_pop,
+            a1,
+            b1_lora,
+            b1n,
+            a2,
+            b2_lora,
+            b2n,
+            sigma,
+            bias_sigma_tensor,
+            noise_scale_mode,
+        )
+        losses = F.cross_entropy(logits, targets_pop, reduction="none")
+        fitness = -losses
+
+        if fitness_baseline == "per_prompt":
+            fitness_grouped = fitness.view(group_count, group_size)
+            fitness_adjusted = (fitness_grouped - fitness_grouped.mean(dim=1, keepdim=True)).view(pop)
+        else:
+            fitness_adjusted = fitness - fitness.mean()
+
+        if fitness_shaping == "centered_ranks":
+            fitness_shaped = _centered_ranks(fitness_adjusted)
+        elif fitness_shaping == "zscore":
+            std = fitness_adjusted.std(unbiased=False)
+            std = torch.where(std < 1e-8, torch.tensor(1.0, device=device), std)
+            fitness_shaped = fitness_adjusted / (std + 1e-8)
+        else:
+            fitness_shaped = fitness_adjusted
+
+        fitness_batch = fitness_shaped.view(group_count, group_size)
+        f_plus = fitness_batch[:, :half_group]
+        f_minus = fitness_batch[:, half_group:]
+        coeff = (f_plus - f_minus).reshape(-1) / 2.0
+
+        if use_sigma_scaling:
+            weight_coeff = coeff / torch.clamp(sigma, min=1e-8)
+            if bias_sigma > 0:
+                bias_coeff = coeff / max(bias_sigma, 1e-8)
+            else:
+                bias_coeff = torch.zeros_like(coeff)
+        else:
+            weight_coeff = coeff
+            bias_coeff = coeff
+
+        w1_scale = 1.0
+        w2_scale = 1.0
+        if noise_scale_mode == "fan_in":
+            w1_scale = 1.0 / math.sqrt(w1.size(1))
+            w2_scale = 1.0 / math.sqrt(w2.size(1))
+
+        a1p = a1.view(group_count, group_size, -1, 1)[:, :half_group]
+        b1p = b1_lora.view(group_count, group_size, -1, 1)[:, :half_group]
+        a2p = a2.view(group_count, group_size, -1, 1)[:, :half_group]
+        b2p = b2_lora.view(group_count, group_size, -1, 1)[:, :half_group]
+        b1np = b1n.view(group_count, group_size, -1)[:, :half_group]
+        b2np = b2n.view(group_count, group_size, -1)[:, :half_group]
+
+        w1_update = torch.einsum(
+            "p,por,pir->oi",
+            weight_coeff * w1_scale,
+            a1p.reshape(-1, a1p.size(2), 1),
+            b1p.reshape(-1, b1p.size(2), 1),
+        )
+        w2_update = torch.einsum(
+            "p,por,pir->oi",
+            weight_coeff * w2_scale,
+            a2p.reshape(-1, a2p.size(2), 1),
+            b2p.reshape(-1, b2p.size(2), 1),
+        )
+
+        if bias_sigma > 0:
+            b1_update = torch.einsum("p,po->o", bias_coeff, b1np.reshape(-1, b1np.size(2)))
+            b2_update = torch.einsum("p,po->o", bias_coeff, b2np.reshape(-1, b2np.size(2)))
+        else:
+            b1_update = torch.zeros_like(b1)
+            b2_update = torch.zeros_like(b2)
+
+        x_unique = inputs_unique.view(inputs_unique.size(0), -1)
+        h1 = torch.relu(x_unique @ w1.t() + b1)
+        logits_eval = h1 @ w2.t() + b2
+        loss_eval = F.cross_entropy(logits_eval, targets_unique)
+        preds = logits_eval.argmax(dim=1)
+        acc = (preds == targets_unique).float().mean()
+
+        return w1_update, b1_update, w2_update, b2_update, loss_eval, acc, fitness
+
+    return torch.compile(step)
+
+
 def train_epoch_eggroll(
     model: TinyMLP,
     train_inputs: torch.Tensor,
@@ -228,6 +501,7 @@ def train_epoch_eggroll(
     sigma: float,
     es_lr: float,
     es_optimizer: optim.Optimizer | None,
+    compiled_step: callable | None,
 ) -> tuple[float, float]:
     model.train()
     running_loss = 0.0
@@ -252,165 +526,53 @@ def train_epoch_eggroll(
     generator = torch.Generator(device=config.device)
     generator.manual_seed(epoch_idx + 7)
 
-    for step in range(steps_per_epoch):
-        prompt_idx = torch.randint(
-            0, num_train, (prompts_per_step,), device=train_targets.device, generator=generator
-        )
-        inputs_unique = train_inputs[prompt_idx]
-        targets_unique = train_targets[prompt_idx]
-        repeated_idx = prompt_idx.repeat_interleave(group_size)
-        inputs_pop = train_inputs[repeated_idx]
-        targets_pop = train_targets[repeated_idx]
+    with torch.no_grad():
+        for step in range(steps_per_epoch):
+            prompt_idx = torch.randint(
+                0, num_train, (prompts_per_step,), device=train_targets.device, generator=generator
+            )
+            inputs_unique = train_inputs[prompt_idx]
+            targets_unique = train_targets[prompt_idx]
+            repeated_idx = prompt_idx.repeat_interleave(group_size)
+            inputs_pop = train_inputs[repeated_idx]
+            targets_pop = train_targets[repeated_idx]
 
-        base_seed = torch.randint(0, 2**31 - 1, (1,)).item()
-        fitness_tensor = torch.empty(pop, device=config.device)
+            if pop_batch != pop:
+                raise ValueError("Set population_batch equal to population for the fast path.")
 
-        with torch.no_grad():
-            for start in range(0, pop, pop_batch):
-                batch_size = min(pop_batch, pop - start)
-                noise_gen = torch.Generator(device=config.device)
-                noise_gen.manual_seed(base_seed + start)
-                noise_batch = _sample_lora_noise_batch(
-                    model, batch_size, group_size, config.bias_sigma, config.device, noise_gen
-                )
-                outputs = _eggroll_forward_batch(
+            if compiled_step is None:
+                w1_update, b1_update, w2_update, b2_update, loss, acc, fitness_tensor = _eggroll_step_full(
                     model,
-                    inputs_pop[start : start + batch_size],
-                    noise_batch,
+                    inputs_unique,
+                    targets_unique,
+                    inputs_pop,
+                    targets_pop,
+                    pop,
+                    group_size,
                     sigma,
                     config.bias_sigma,
+                    config.use_sigma_scaling,
                     config.noise_scale_mode,
+                    config.fitness_shaping,
+                    config.fitness_baseline,
+                    seed=epoch_idx * 100000 + step,
+                    forward_fn=None,
                 )
-                losses = F.cross_entropy(outputs, targets_pop[start : start + batch_size], reduction="none")
-                fitness_tensor[start : start + batch_size] = -losses
-
-        if not torch.isfinite(fitness_tensor).all():
-            continue
-
-        if config.fitness_baseline == "per_prompt":
-            fitness_grouped = fitness_tensor.view(prompts_per_step, group_size)
-            fitness_adjusted = fitness_grouped - fitness_grouped.mean(dim=1, keepdim=True)
-            fitness_adjusted = fitness_adjusted.view(pop)
-        else:
-            fitness_adjusted = fitness_tensor - fitness_tensor.mean()
-
-        if config.fitness_shaping == "centered_ranks":
-            fitness_shaped = _centered_ranks(fitness_adjusted)
-        elif config.fitness_shaping == "zscore":
-            std = fitness_adjusted.std(unbiased=False)
-            if std < 1e-8:
-                std = torch.tensor(1.0, device=config.device)
-            fitness_shaped = fitness_adjusted / (std + 1e-8)
-        else:
-            fitness_shaped = fitness_adjusted
-
-        num_pairs = pop // 2
-        scale = es_lr / num_pairs
-        with torch.no_grad():
-            w1_update = torch.zeros_like(model.fc1.weight)
-            b1_update = torch.zeros_like(model.fc1.bias)
-            w2_update = torch.zeros_like(model.fc2.weight)
-            b2_update = torch.zeros_like(model.fc2.bias)
-            if config.sanity_check and step == 0:
-                alt_w1_update = torch.zeros_like(model.fc1.weight)
-                alt_w2_update = torch.zeros_like(model.fc2.weight)
-            w1_scale = 1.0
-            w2_scale = 1.0
-            if config.noise_scale_mode == "fan_in":
-                w1_scale = 1.0 / math.sqrt(model.fc1.weight.size(1))
-                w2_scale = 1.0 / math.sqrt(model.fc2.weight.size(1))
-
-            offset = 0
-            for start in range(0, pop, pop_batch):
-                batch_size = min(pop_batch, pop - start)
-                noise_gen = torch.Generator(device=config.device)
-                noise_gen.manual_seed(base_seed + start)
-                noise_batch = _sample_lora_noise_batch(
-                    model, batch_size, group_size, config.bias_sigma, config.device, noise_gen
+            else:
+                w1_update, b1_update, w2_update, b2_update, loss, acc, fitness_tensor = compiled_step(
+                    model.fc1.weight,
+                    model.fc1.bias,
+                    model.fc2.weight,
+                    model.fc2.bias,
+                    inputs_unique,
+                    targets_unique,
+                    inputs_pop,
+                    targets_pop,
+                    torch.tensor(sigma, device=config.device),
                 )
-                group_count = batch_size // group_size
-                half_group = group_size // 2
-                fitness_batch = fitness_shaped[offset : offset + batch_size].view(
-                    group_count, group_size
-                )
-                f_plus = fitness_batch[:, :half_group]
-                f_minus = fitness_batch[:, half_group:]
-                coeff_base = (f_plus - f_minus) / 2.0
-                coeff_base = coeff_base.reshape(-1)
-                offset += batch_size
 
-                if config.use_sigma_scaling:
-                    weight_coeff = coeff_base / max(sigma, 1e-8)
-                    if config.bias_sigma > 0:
-                        bias_coeff = coeff_base / max(config.bias_sigma, 1e-8)
-                    else:
-                        bias_coeff = torch.zeros_like(coeff_base)
-                else:
-                    weight_coeff = coeff_base
-                    bias_coeff = coeff_base
-
-                if config.sanity_check and step == 0 and config.use_sigma_scaling:
-                    alt_weight_coeff = coeff_base / max(2.0 * sigma, 1e-8)
-
-                a1 = noise_batch["fc1.weight.A"].view(group_count, group_size, -1, 1)[:, :half_group]
-                b1_lora = noise_batch["fc1.weight.B"].view(group_count, group_size, -1, 1)[:, :half_group]
-                w1_update.add_(
-                    torch.einsum(
-                        "p,por,pir->oi",
-                        weight_coeff * w1_scale,
-                        a1.reshape(-1, a1.size(2), 1),
-                        b1_lora.reshape(-1, b1_lora.size(2), 1),
-                    )
-                )
-                if config.sanity_check and step == 0 and config.use_sigma_scaling:
-                    alt_w1_update.add_(
-                        torch.einsum(
-                            "p,por,pir->oi",
-                            alt_weight_coeff * w1_scale,
-                            a1.reshape(-1, a1.size(2), 1),
-                            b1_lora.reshape(-1, b1_lora.size(2), 1),
-                        )
-                    )
-                b1_noise = noise_batch["fc1.bias"].view(group_count, group_size, -1)[:, :half_group]
-                if config.bias_sigma > 0:
-                    b1_update.add_(
-                        torch.einsum(
-                            "p,po->o", bias_coeff, b1_noise.reshape(-1, b1_noise.size(2))
-                        )
-                    )
-
-                a2 = noise_batch["fc2.weight.A"].view(group_count, group_size, -1, 1)[:, :half_group]
-                b2_lora = noise_batch["fc2.weight.B"].view(group_count, group_size, -1, 1)[:, :half_group]
-                w2_update.add_(
-                    torch.einsum(
-                        "p,por,pir->oi",
-                        weight_coeff * w2_scale,
-                        a2.reshape(-1, a2.size(2), 1),
-                        b2_lora.reshape(-1, b2_lora.size(2), 1),
-                    )
-                )
-                if config.sanity_check and step == 0 and config.use_sigma_scaling:
-                    alt_w2_update.add_(
-                        torch.einsum(
-                            "p,por,pir->oi",
-                            alt_weight_coeff * w2_scale,
-                            a2.reshape(-1, a2.size(2), 1),
-                            b2_lora.reshape(-1, b2_lora.size(2), 1),
-                        )
-                    )
-                b2_noise = noise_batch["fc2.bias"].view(group_count, group_size, -1)[:, :half_group]
-                if config.bias_sigma > 0:
-                    b2_update.add_(
-                        torch.einsum(
-                            "p,po->o", bias_coeff, b2_noise.reshape(-1, b2_noise.size(2))
-                        )
-                    )
-
-            if config.sanity_check and step == 0 and config.use_sigma_scaling:
-                ratio_w1 = (w1_update.norm() / (alt_w1_update.norm() + 1e-8)).item()
-                ratio_w2 = (w2_update.norm() / (alt_w2_update.norm() + 1e-8)).item()
-                print(f"sanity_check sigma_scale_ratio_fc1={ratio_w1:.3f} fc2={ratio_w2:.3f}")
-
+            num_pairs = pop // 2
+            scale = es_lr / num_pairs
             if es_optimizer is None:
                 model.fc1.weight.add_(w1_update, alpha=scale)
                 if config.bias_sigma > 0:
@@ -432,16 +594,11 @@ def train_epoch_eggroll(
                 es_optimizer.step()
                 es_optimizer.zero_grad(set_to_none=True)
 
-            outputs = model(inputs_unique)
-            loss = F.cross_entropy(outputs, targets_unique)
-            preds = outputs.argmax(dim=1)
+            running_loss += loss * inputs_unique.size(0)
+            correct += acc * inputs_unique.size(0)
+            total += targets_unique.size(0)
 
-        running_loss += loss.item() * inputs_unique.size(0)
-        correct += (preds == targets_unique).sum().item()
-        total += targets_unique.size(0)
-
-        if config.es_log_every and (step % config.es_log_every == 0):
-            with torch.no_grad():
+            if config.es_log_every and (step % config.es_log_every == 0):
                 fitness_min = fitness_tensor.min().item()
                 fitness_max = fitness_tensor.max().item()
                 fitness_mean = fitness_tensor.mean().item()
@@ -450,12 +607,12 @@ def train_epoch_eggroll(
                 w1_norm = model.fc1.weight.norm().item()
                 w2_norm = model.fc2.weight.norm().item()
                 update_norm = (w1_update.norm() + w2_update.norm()).item()
-            print(
-                f"es_step={step} fitness_mean={fitness_mean:.4f} fitness_std={fitness_std:.4f} "
-                f"fitness_min={fitness_min:.4f} fitness_max={fitness_max:.4f} "
-                f"nonfinite={nonfinite:.4f} update_norm={update_norm:.4f} "
-                f"w1_norm={w1_norm:.4f} w2_norm={w2_norm:.4f}"
-            )
+                print(
+                    f"es_step={step} fitness_mean={fitness_mean:.4f} fitness_std={fitness_std:.4f} "
+                    f"fitness_min={fitness_min:.4f} fitness_max={fitness_max:.4f} "
+                    f"nonfinite={nonfinite:.4f} update_norm={update_norm:.4f} "
+                    f"w1_norm={w1_norm:.4f} w2_norm={w2_norm:.4f}"
+                )
 
     avg_loss = running_loss / total
     accuracy = correct / total
@@ -481,6 +638,16 @@ def eval_epoch(model: nn.Module, loader: DataLoader, device: str) -> tuple[float
     avg_loss = running_loss / total
     accuracy = correct / total
     return avg_loss, accuracy
+
+
+@torch.no_grad()
+def eval_full(model: nn.Module, inputs: torch.Tensor, targets: torch.Tensor) -> tuple[float, float]:
+    model.eval()
+    outputs = model(inputs)
+    loss = F.cross_entropy(outputs, targets).item()
+    preds = outputs.argmax(dim=1)
+    accuracy = (preds == targets).float().mean().item()
+    return loss, accuracy
 
 
 def parse_args() -> TrainConfig:
@@ -542,7 +709,6 @@ def parse_args() -> TrainConfig:
     parser.add_argument("--es-weight-decay", type=float, default=0.0)
     parser.add_argument("--es-log-every", type=int, default=0)
     parser.add_argument("--data-dir", type=str, default="data")
-    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     args = parser.parse_args()
     return TrainConfig(
         batch_size=args.batch_size,
@@ -572,18 +738,25 @@ def parse_args() -> TrainConfig:
         sigma_floor=args.sigma_floor,
         es_lr_floor=args.es_lr_floor,
         data_dir=args.data_dir,
-        device=args.device,
+        device="cuda",
     )
 
 
 def main() -> None:
     config = parse_args()
     torch.manual_seed(7)
+    torch.set_float32_matmul_precision("high")
+    if config.device == "cuda" and not torch.cuda.is_available():
+        print("cuda requested but not available; falling back to cpu")
+        config = config.__class__(**{**config.__dict__, "device": "cpu"})
     train_loader, test_loader = build_dataloaders(config)
     train_inputs = None
     train_targets = None
+    test_inputs = None
+    test_targets = None
     if config.optimizer == "eggroll":
         train_inputs, train_targets = materialize_dataset(train_loader.dataset, config.device)
+        test_inputs, test_targets = materialize_dataset(test_loader.dataset, config.device)
     model = TinyMLP().to(config.device)
     optimizer = None
     if config.optimizer == "adam":
@@ -603,6 +776,14 @@ def main() -> None:
                 lr=1.0,
                 weight_decay=config.es_weight_decay,
             )
+
+    compiled_step = None
+    if config.optimizer == "eggroll" and config.device != "cpu":
+        try:
+            compiled_step = build_compiled_step(model, config)
+        except Exception as exc:
+            print(f"torch.compile failed, continuing without compile: {exc}")
+            compiled_step = None
 
     start_time = time.monotonic()
     time_to_target = None
@@ -629,18 +810,29 @@ def main() -> None:
                 config.schedule_decay,
             )
             train_loss, train_acc = train_epoch_eggroll(
-                model, train_inputs, train_targets, config, epoch - 1, sigma, es_lr, es_optimizer
+                model,
+                train_inputs,
+                train_targets,
+                config,
+                epoch - 1,
+                sigma,
+                es_lr,
+                es_optimizer,
+                compiled_step,
             )
         else:
             train_loss, train_acc = train_epoch(model, train_loader, optimizer, config.device)
-        test_loss, test_acc = eval_epoch(model, test_loader, config.device)
+        if config.optimizer == "eggroll":
+            test_loss, test_acc = eval_full(model, test_inputs, test_targets)
+        else:
+            test_loss, test_acc = eval_epoch(model, test_loader, config.device)
         if time_to_target is None and test_acc >= target_acc:
             time_to_target = time.monotonic() - start_time
-        print(
-            f"epoch={epoch} "
-            f"train_loss={train_loss:.4f} train_acc={train_acc:.4f} "
-            f"test_loss={test_loss:.4f} test_acc={test_acc:.4f}"
-        )
+        if epoch == 1 or epoch % 50 == 0 or epoch == config.epochs:
+            print(
+                f"epoch={epoch} "
+                f"test_loss={test_loss:.4f} test_acc={test_acc:.4f}"
+            )
     if time_to_target is None:
         elapsed = time.monotonic() - start_time
         print(f"time_to_{int(target_acc * 100)}pct=not_reached elapsed={elapsed:.2f}s")
